@@ -1,0 +1,83 @@
+{
+  "audit": {
+    "analysis_crs": "EPSG:2284",
+    "id": "brooks-ymca",
+    "name": "Brooks Family YMCA parking footprint"
+  },
+  "comparisons": {
+    "car_to_bike": {
+      "denominator": "bike_storage",
+      "numerator": "car_access",
+      "ratio": 143.213437
+    },
+    "car_to_building": {
+      "denominator": "building",
+      "numerator": "car_access",
+      "ratio": 1.849923
+    }
+  },
+  "config_sha256": "8b6800b167286c47c6668df1f7063deb70d8a9160e6d8b7e7726294e4602ec23",
+  "layers": [
+    {
+      "area_sq_ft": 82636.26944,
+      "feature_count": 4,
+      "feature_ids": [
+        "12019",
+        "27864",
+        "28259",
+        "28269"
+      ],
+      "id": "parking",
+      "role": "car_access"
+    },
+    {
+      "area_sq_ft": 10166.037667,
+      "feature_count": 1,
+      "feature_ids": [
+        "35882"
+      ],
+      "id": "driveway",
+      "role": "car_access"
+    },
+    {
+      "area_sq_ft": 50165.485496,
+      "feature_count": 1,
+      "feature_ids": [
+        "87264"
+      ],
+      "id": "building",
+      "role": "building"
+    },
+    {
+      "area_sq_ft": 648.0,
+      "id": "bike_storage",
+      "role": "bike_storage"
+    }
+  ],
+  "roles": {
+    "bike_storage": {
+      "area_acres": 0.014876,
+      "area_sq_ft": 648.0,
+      "geometric_area_sq_ft": 0.0,
+      "manual_area_sq_ft": 648.0
+    },
+    "building": {
+      "area_acres": 1.151641,
+      "area_sq_ft": 50165.485496,
+      "geometric_area_sq_ft": 50165.485496,
+      "manual_area_sq_ft": 0.0
+    },
+    "car_access": {
+      "area_acres": 2.130448,
+      "area_sq_ft": 92802.307107,
+      "geometric_area_sq_ft": 92802.307107,
+      "manual_area_sq_ft": 0.0
+    }
+  },
+  "schema_version": 2,
+  "source_sha256": {
+    "building": "291b48cbe3fe9af3237c0b2bf2bc81b02f29545fa458503c0398689c42bd284d",
+    "driveway": "8fda8332c63d315c2a75b03fdc0f6f90029eaac75e1800443c4fac26d0430be7",
+    "parking": "0ce5d7ab547e468400edbc6909c816a3b47837eb713cbbf4e27cce3b9f05e602"
+  }
+}

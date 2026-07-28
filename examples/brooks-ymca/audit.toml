@@ -1,0 +1,62 @@
+[audit]
+id = "brooks-ymca"
+name = "Brooks Family YMCA parking footprint"
+analysis_crs = "EPSG:2284"
+
+[[layers]]
+id = "parking"
+role = "car_access"
+source_kind = "arcgis"
+source_url = "https://gisweb.charlottesville.org/arcgis/rest/services/OpenData_1/MapServer/34"
+snapshot = "data/parking.geojson"
+object_ids = [12019, 27864, 28259, 28269]
+id_field = "OBJECTID"
+source_crs = "EPSG:4326"
+expected_feature_count = 4
+quality = "authoritative-local"
+note = "Locked municipal parking polygons surrounding and serving the YMCA."
+
+[[layers]]
+id = "driveway"
+role = "car_access"
+source_kind = "arcgis"
+source_url = "https://gisweb.charlottesville.org/arcgis/rest/services/OpenData_1/MapServer/33"
+snapshot = "data/driveway.geojson"
+object_ids = [35882]
+id_field = "OBJECTID"
+source_crs = "EPSG:4326"
+expected_feature_count = 1
+quality = "authoritative-local"
+note = "Locked municipal vehicle-driveway polygon serving the YMCA."
+
+[[layers]]
+id = "building"
+role = "building"
+source_kind = "arcgis"
+source_url = "https://gisweb.charlottesville.org/arcgis/rest/services/OpenData_1/MapServer/59"
+snapshot = "data/building.geojson"
+object_ids = [87264]
+id_field = "OBJECTID"
+source_crs = "EPSG:4326"
+expected_feature_count = 1
+quality = "authoritative-local"
+note = "Locked municipal building-footprint polygon."
+
+[[layers]]
+id = "bike_storage"
+role = "bike_storage"
+source_kind = "manual"
+manual_area_sq_ft = 648
+quality = "illustrative-assumption"
+note = "Illustrative scenario: 27 inverted-U hoops x 2 bicycles per hoop x 12 sq ft per typical bicycle. The linked panorama is undated context, not archived evidence of a current count. This scenario excludes access aisles."
+evidence_url = "https://www.google.com/maps/@38.0487017,-78.4787163,3a,75y,277.75h,97.46t/"
+
+[[comparisons]]
+id = "car_to_building"
+numerator = "car_access"
+denominator = "building"
+
+[[comparisons]]
+id = "car_to_bike"
+numerator = "car_access"
+denominator = "bike_storage"
