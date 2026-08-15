@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,11 @@ from .audit import (
     run_audit,
     verify_against_baseline,
 )
+from .errors import AuditError, ParkingFootprintError
+
+# Reported as "error: ..." with exit status 2. Anything else is a bug and keeps
+# its traceback.
+EXPECTED_ERRORS = (ParkingFootprintError, OSError, json.JSONDecodeError)
 
 
 def _nonnegative_finite_float(value: str) -> float:
@@ -76,25 +82,33 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
-    args = build_parser().parse_args()
-    if args.command == "run":
-        result = run_audit(
-            args.config,
-            offline=args.offline,
-            output_dir=args.output,
-        )
-        _print_summary(result)
-        if args.write_baseline:
-            _write_baseline(result, args.write_baseline)
-        return
-
+def _run(args: argparse.Namespace) -> None:
     result = run_audit(
         args.config,
         offline=args.offline,
         output_dir=args.output,
     )
-    baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
+    _print_summary(result)
+    if args.write_baseline:
+        _write_baseline(result, args.write_baseline)
+
+
+def _load_baseline(path: Path) -> dict[str, Any]:
+    baseline = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(baseline, dict):
+        raise AuditError(f"baseline {path} must contain a JSON object")
+    return baseline
+
+
+def _verify(args: argparse.Namespace) -> None:
+    # Read the baseline before the audit runs so a bad baseline cannot waste
+    # the run or publish an unverified --output directory.
+    baseline = _load_baseline(args.baseline)
+    result = run_audit(
+        args.config,
+        offline=args.offline,
+        output_dir=args.output,
+    )
     issues = verify_against_baseline(
         result,
         baseline,
@@ -109,5 +123,17 @@ def main() -> None:
     print("verification passed")
 
 
-if __name__ == "__main__":
+def main() -> None:
+    args = build_parser().parse_args()
+    try:
+        if args.command == "run":
+            _run(args)
+        else:
+            _verify(args)
+    except EXPECTED_ERRORS as error:
+        print(f"error: {error}", file=sys.stderr)
+        raise SystemExit(2) from error
+
+
+if __name__ == "__main__":  # pragma: no cover
     main()

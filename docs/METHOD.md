@@ -21,7 +21,13 @@ The lock contains:
 - expected feature count
 - source and analysis CRS
 - source snapshot and canonical hash
+- `captured_at`, the date the snapshot was downloaded
 - note explaining why the features were included
+
+Record `captured_at` yourself for snapshot and manual layers; an online run
+stamps its own fetch time. A snapshot file cannot carry its own capture date,
+because adding one would change the bytes that are hashed and break the
+comparison between an offline and an online verification.
 
 The configuration and source hashes are also stored in the baseline. `verify`
 compares them exactly before applying the configured numeric tolerance to areas
@@ -59,6 +65,18 @@ can be checked for overlap.
 
 Comparisons should retain these labels. A precise number from a
 `national-estimate` source is not equivalent to an authoritative local polygon.
+A layer's `quality` must be one of these five grades or `unrated`; the
+configuration rejects anything else so a typo cannot quietly invent a sixth
+grade.
+
+## Querying ArcGIS services
+
+An ArcGIS layer is fetched with `f=geojson`, and the package passes the
+configured `source_crs` through as `outSR`. GeoJSON specifies WGS84 longitude
+and latitude, so `source_crs = "EPSG:4326"` is the portable choice. Requesting a
+projected `outSR` alongside `f=geojson` makes some services emit coordinates
+that are not valid GeoJSON. Reproject through `analysis_crs` instead, which is
+what the area calculation uses.
 
 ## Bicycle parking
 

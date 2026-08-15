@@ -53,5 +53,5 @@ branch = true
 source = ["parking_footprint"]
 
 [tool.coverage.report]
-fail_under = 80
+fail_under = 95
 show_missing = true

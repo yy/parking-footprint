@@ -9,12 +9,21 @@ from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform, unary_union
 
+from .errors import GeometryError
+from .ids import sorted_ids
+
+__all__ = [
+    "SQ_FT_PER_ACRE",
+    "SQ_FT_PER_SQ_METER",
+    "GeometryError",
+    "GeometryMeasurement",
+    "acres",
+    "measure_feature_collection",
+    "union_area_sq_ft",
+]
+
 SQ_FT_PER_SQ_METER = 10.763910416709722
 SQ_FT_PER_ACRE = 43_560.0
-
-
-class GeometryError(ValueError):
-    """Raised when parking-footprint geometry cannot be measured."""
 
 
 @dataclass(frozen=True)
@@ -32,7 +41,14 @@ def _square_feet_per_native_square_unit(crs: CRS) -> float:
         raise GeometryError(f"analysis CRS must be projected: {crs.to_string()}")
     if not crs.axis_info:
         raise GeometryError(f"analysis CRS has no unit metadata: {crs.to_string()}")
-    meters_per_unit = crs.axis_info[0].unit_conversion_factor
+    factors = {axis.unit_conversion_factor for axis in crs.axis_info}
+    if len(factors) > 1:
+        # One factor per axis would make "square unit" ambiguous.
+        raise GeometryError(
+            f"analysis CRS mixes axis units: {crs.to_string()} "
+            f"({sorted(axis.unit_name for axis in crs.axis_info)})"
+        )
+    meters_per_unit = factors.pop()
     return meters_per_unit**2 * SQ_FT_PER_SQ_METER
 
 
@@ -41,6 +57,8 @@ def _polygonal(geometry: BaseGeometry) -> BaseGeometry:
     if valid.geom_type in {"Polygon", "MultiPolygon"}:
         return valid
     if valid.geom_type == "GeometryCollection":
+        # make_valid can split a self-intersecting polygon into polygonal and
+        # linear parts; the linear remnants carry no area.
         polygons = [
             part
             for part in valid.geoms
@@ -87,7 +105,7 @@ def measure_feature_collection(
     union_sq_ft = union_native * area_factor
     return GeometryMeasurement(
         union_geometry=union,
-        feature_ids=tuple(sorted(feature_ids)),
+        feature_ids=tuple(sorted_ids(feature_ids)),
         feature_count=len(geometries),
         summed_feature_area_sq_ft=summed_sq_ft,
         union_area_sq_ft=union_sq_ft,

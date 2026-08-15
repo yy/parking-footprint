@@ -13,8 +13,22 @@ from typing import Any
 
 from . import __version__
 from .config import load_config
+from .errors import AuditError
 from .geometry import acres, measure_feature_collection, union_area_sq_ft
 from .sources import load_source, write_source_snapshot
+
+__all__ = [
+    "SCHEMA_VERSION",
+    "AuditError",
+    "baseline_payload",
+    "run_audit",
+    "verify_against_baseline",
+]
+
+SCHEMA_VERSION = 3
+
+# Everything `run --output` is allowed to own and therefore replace.
+MANAGED_OUTPUT_ENTRIES = frozenset({"audit.json", "provenance.json", "sources"})
 
 
 def _rounded(value: float) -> float:
@@ -33,7 +47,7 @@ def _publish_output(
     source_snapshots: list[tuple[str, Any]],
 ) -> None:
     if output == Path(output.anchor):
-        raise ValueError("output directory cannot be a filesystem root")
+        raise AuditError("output directory cannot be a filesystem root")
 
     output.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(
@@ -57,15 +71,14 @@ def _publish_output(
 
         if output.exists():
             if not output.is_dir():
-                raise ValueError(f"output path is not a directory: {output}")
-            allowed_entries = {"audit.json", "provenance.json", "sources"}
+                raise AuditError(f"output path is not a directory: {output}")
             unexpected = sorted(
                 child.name
                 for child in output.iterdir()
-                if child.name not in allowed_entries
+                if child.name not in MANAGED_OUTPUT_ENTRIES
             )
             if unexpected:
-                raise ValueError(
+                raise AuditError(
                     f"output directory contains unmanaged entries: {unexpected}"
                 )
             os.replace(output, backup)
@@ -75,11 +88,14 @@ def _publish_output(
             if backup.exists():
                 os.replace(backup, output)
             raise
-        if backup.exists():
-            shutil.rmtree(backup)
     finally:
-        if staging.exists():
-            shutil.rmtree(staging)
+        # After a successful swap `backup` holds the superseded result and
+        # `staging` is gone; after a failure the reverse is true. Cleaning both
+        # here keeps either outcome from leaving a hidden directory behind, and
+        # a cleanup failure must not mask the error that caused it.
+        for path in (staging, backup):
+            if path.exists():
+                shutil.rmtree(path, ignore_errors=True)
 
 
 def run_audit(
@@ -118,6 +134,7 @@ def run_audit(
                     "id": spec.id,
                     "source_kind": "manual",
                     "manual_area_sq_ft": area_sq_ft,
+                    "captured_at": spec.captured_at,
                     "note": spec.note,
                     "evidence_url": spec.evidence_url,
                 }
@@ -185,7 +202,7 @@ def run_audit(
         }
 
     result = {
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "audit": {
             "id": config.id,
             "name": config.name,
@@ -198,7 +215,7 @@ def run_audit(
         "comparisons": comparisons,
     }
     provenance = {
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "audit_id": config.id,
         "config_path": config.path.name,
         "config_sha256": config.config_sha256,

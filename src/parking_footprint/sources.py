@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -10,12 +11,19 @@ import httpx
 from pyproj import CRS
 
 from .config import LayerSpec
+from .errors import SourceError
+from .ids import sorted_ids
+
+__all__ = [
+    "ARCGIS_OBJECT_ID_BATCH_SIZE",
+    "SourceData",
+    "SourceError",
+    "canonical_geojson_bytes",
+    "load_source",
+    "write_source_snapshot",
+]
 
 ARCGIS_OBJECT_ID_BATCH_SIZE = 500
-
-
-class SourceError(RuntimeError):
-    """Raised when a parking-footprint source cannot satisfy its lock."""
 
 
 @dataclass(frozen=True)
@@ -42,7 +50,7 @@ def _feature_ids(
 ) -> list[str]:
     field = id_field or spec.id_field
     try:
-        return sorted(
+        return sorted_ids(
             str((feature.get("properties") or {})[field]) for feature in features
         )
     except KeyError as error:
@@ -76,7 +84,14 @@ def _validate_feature_collection(spec: LayerSpec, data: dict[str, Any]) -> None:
 def _read_snapshot(spec: LayerSpec) -> SourceData:
     if spec.snapshot is None:
         raise SourceError(f"offline source {spec.id} has no snapshot")
-    data = json.loads(spec.snapshot.read_text(encoding="utf-8"))
+    try:
+        text = spec.snapshot.read_text(encoding="utf-8")
+    except OSError as error:
+        raise SourceError(f"{spec.id} cannot read its snapshot: {error}") from error
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise SourceError(f"{spec.id} snapshot is not valid JSON: {error}") from error
     _validate_feature_collection(spec, data)
     canonical = canonical_geojson_bytes(data)
     return SourceData(
@@ -85,6 +100,9 @@ def _read_snapshot(spec: LayerSpec) -> SourceData:
         provenance={
             "mode": "snapshot",
             "snapshot": spec.snapshot_reference or spec.snapshot.name,
+            # Declared in the configuration: a snapshot file cannot carry its own
+            # capture date without changing the bytes that are hashed.
+            "captured_at": spec.captured_at,
             "sha256": hashlib.sha256(canonical).hexdigest(),
         },
     )
@@ -112,6 +130,7 @@ def _fetch_arcgis(spec: LayerSpec) -> SourceData:
     feature_request_parameters: list[dict[str, str]] = []
     selection_request_url: str | None = None
     selected_id_field = spec.id_field
+    requested_at = datetime.now(UTC).isoformat()
     with httpx.Client(follow_redirects=True, timeout=60) as client:
         if spec.object_ids:
             selected_ids = list(spec.object_ids)
@@ -136,7 +155,7 @@ def _fetch_arcgis(spec: LayerSpec) -> SourceData:
                     f"{spec.id} uses ArcGIS object ID field {selected_id_field!r}; "
                     f"configured id_field is {spec.id_field!r}"
                 )
-            selected_ids = sorted(str(object_id) for object_id in object_ids)
+            selected_ids = sorted_ids(str(object_id) for object_id in object_ids)
 
         for start in range(0, len(selected_ids), ARCGIS_OBJECT_ID_BATCH_SIZE):
             batch = selected_ids[start : start + ARCGIS_OBJECT_ID_BATCH_SIZE]
@@ -186,11 +205,8 @@ def _fetch_arcgis(spec: LayerSpec) -> SourceData:
             ),
         ),
     }
-    if len(features) != len(selected_ids):
-        raise SourceError(
-            f"{spec.id} returned {len(features)} features for "
-            f"{len(selected_ids)} selected ArcGIS object IDs"
-        )
+    # A count check would be unreachable here: returned_ids holds one entry per
+    # feature and has already been compared with selected_ids element by element.
     _validate_feature_collection(spec, data)
     canonical = canonical_geojson_bytes(data)
     request_parameters = dict(feature_params)
@@ -204,7 +220,9 @@ def _fetch_arcgis(spec: LayerSpec) -> SourceData:
         provenance={
             "mode": "online",
             "layer_url": spec.source_url,
-            "request_url": request_urls[0] if request_urls else selection_request_url,
+            "captured_at": requested_at,
+            # Feature batches are POSTed, so their parameters live in the request
+            # body rather than in these URLs.
             "request_urls": request_urls,
             "feature_request_parameters": feature_request_parameters,
             "selection_request_url": selection_request_url,

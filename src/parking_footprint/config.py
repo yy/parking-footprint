@@ -5,15 +5,37 @@ import math
 import re
 import tomllib
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from .errors import ConfigError
+from .ids import id_sort_key, sorted_ids
 
-class ConfigError(ValueError):
-    """Raised when a parking-footprint configuration is incomplete."""
-
+__all__ = [
+    "EVIDENCE_GRADES",
+    "AuditConfig",
+    "ComparisonSpec",
+    "ConfigError",
+    "LayerSpec",
+    "load_config",
+]
 
 SAFE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+# The evidence grades defined in docs/METHOD.md. Comparisons are only
+# meaningful when these labels mean the same thing across audits, so a typo
+# must fail rather than silently invent a sixth grade.
+EVIDENCE_GRADES = frozenset(
+    {
+        "unrated",
+        "authoritative-local",
+        "derived-local",
+        "observed-estimate",
+        "illustrative-assumption",
+        "national-estimate",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +55,7 @@ class LayerSpec:
     note: str | None
     evidence_url: str | None
     snapshot_reference: str | None = None
+    captured_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -68,10 +91,88 @@ def _safe_path_reference(value: Any) -> str | None:
     return path.as_posix()
 
 
+def _captured_at(value: Any, layer_id: str) -> str | None:
+    if value is None:
+        return None
+    # TOML parses a bare date or timestamp into a date/datetime object; both
+    # render back to an ISO 8601 string.
+    text = (
+        value.isoformat() if isinstance(value, date | datetime) else str(value).strip()
+    )
+    try:
+        datetime.fromisoformat(text)
+    except ValueError as error:
+        raise ConfigError(
+            f"layer {layer_id} has an invalid captured_at {text!r}; "
+            "use an ISO 8601 date or timestamp"
+        ) from error
+    return text
+
+
+def _object_ids(item: dict[str, Any], layer_id: str) -> tuple[str, ...]:
+    values = [str(value) for value in item.get("object_ids", [])]
+    duplicates = sorted_ids({value for value in values if values.count(value) > 1})
+    if duplicates:
+        raise ConfigError(f"layer {layer_id} repeats object_ids: {duplicates}")
+    return tuple(sorted(values, key=id_sort_key))
+
+
+def _expected_feature_count(
+    item: dict[str, Any],
+    layer_id: str,
+    object_ids: tuple[str, ...],
+) -> int | None:
+    value = item.get("expected_feature_count")
+    if value is None:
+        return None
+    count = int(value)
+    if count < 0:
+        raise ConfigError(
+            f"layer {layer_id} requires a nonnegative expected_feature_count"
+        )
+    if object_ids and count != len(object_ids):
+        raise ConfigError(
+            f"layer {layer_id} locks {len(object_ids)} object_ids but expects "
+            f"{count} features"
+        )
+    return count
+
+
+def _quality(item: dict[str, Any], layer_id: str) -> str:
+    quality = str(item.get("quality", "unrated")).strip()
+    if quality not in EVIDENCE_GRADES:
+        raise ConfigError(
+            f"layer {layer_id} has unknown quality {quality!r}; expected one of "
+            f"{sorted(EVIDENCE_GRADES)}"
+        )
+    return quality
+
+
+def _manual_area_sq_ft(item: dict[str, Any], layer_id: str) -> float:
+    value = item.get("manual_area_sq_ft")
+    invalid = ConfigError(
+        f"manual layer {layer_id} requires finite, nonnegative manual_area_sq_ft"
+    )
+    if value is None:
+        raise invalid
+    try:
+        area = float(value)
+    except (TypeError, ValueError) as error:
+        raise invalid from error
+    if not math.isfinite(area) or area < 0:
+        raise invalid
+    return area
+
+
 def load_config(path: str | Path) -> AuditConfig:
     config_path = Path(path).resolve()
     raw_bytes = config_path.read_bytes()
-    raw = tomllib.loads(raw_bytes.decode("utf-8"))
+    try:
+        raw = tomllib.loads(raw_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        raise ConfigError(
+            f"{config_path.name} is not readable TOML: {error}"
+        ) from error
     base_dir = config_path.parent
 
     audit = raw.get("audit", {})
@@ -98,24 +199,14 @@ def load_config(path: str | Path) -> AuditConfig:
             raise ConfigError(f"duplicate layer id: {layer_id}")
         seen_ids.add(layer_id)
 
-        object_ids = tuple(sorted(str(value) for value in item.get("object_ids", [])))
+        object_ids = _object_ids(item, layer_id)
         source_url = item.get("source_url")
         snapshot_value = item.get("snapshot")
         snapshot = _optional_path(snapshot_value, base_dir)
-        manual_area = item.get("manual_area_sq_ft")
+        manual_area: float | None = None
 
         if source_kind == "manual":
-            if manual_area is None:
-                raise ConfigError(
-                    f"manual layer {layer_id} requires finite, nonnegative "
-                    "manual_area_sq_ft"
-                )
-            manual_area = float(manual_area)
-            if not math.isfinite(manual_area) or manual_area < 0:
-                raise ConfigError(
-                    f"manual layer {layer_id} requires finite, nonnegative "
-                    "manual_area_sq_ft"
-                )
+            manual_area = _manual_area_sq_ft(item, layer_id)
         elif source_kind == "arcgis":
             if not source_url:
                 raise ConfigError(f"ArcGIS layer {layer_id} requires source_url")
@@ -142,20 +233,17 @@ def load_config(path: str | Path) -> AuditConfig:
                 where=str(item["where"]) if item.get("where") else None,
                 id_field=str(item.get("id_field", "OBJECTID")),
                 source_crs=str(item.get("source_crs", "EPSG:4326")),
-                expected_feature_count=(
-                    int(item["expected_feature_count"])
-                    if item.get("expected_feature_count") is not None
-                    else None
+                expected_feature_count=_expected_feature_count(
+                    item, layer_id, object_ids
                 ),
-                manual_area_sq_ft=(
-                    float(manual_area) if manual_area is not None else None
-                ),
-                quality=str(item.get("quality", "unrated")),
+                manual_area_sq_ft=manual_area,
+                quality=_quality(item, layer_id),
                 note=str(item["note"]) if item.get("note") else None,
                 evidence_url=(
                     str(item["evidence_url"]) if item.get("evidence_url") else None
                 ),
                 snapshot_reference=_safe_path_reference(snapshot_value),
+                captured_at=_captured_at(item.get("captured_at"), layer_id),
             )
         )
 

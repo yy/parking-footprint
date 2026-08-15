@@ -51,8 +51,13 @@ changes, or its measured area moves outside the configured tolerance.
 Each output directory contains:
 
 - `audit.json`: measured layer and role areas, plus requested ratios
-- `provenance.json`: source queries, locked IDs, hashes, CRS, and software
+- `provenance.json`: source queries, locked IDs, hashes, capture dates, CRS,
+  and software
 - `sources/*.geojson`: the exact geometries used in that run
+
+Both artifacts carry a `schema_version`. The baseline locks it, so a format
+change surfaces as a verification failure rather than a silent comparison
+against a differently shaped record. See [CHANGELOG.md](CHANGELOG.md).
 
 Provenance uses configuration-relative path references so sharing an output
 directory does not disclose the machine's local filesystem layout.
@@ -73,7 +78,12 @@ Copy `examples/brooks-ymca/audit.toml` and change:
 - municipal layer URLs
 - reviewed feature IDs
 - expected feature counts
+- `captured_at`, the date you downloaded each snapshot
 - manual observations, if any
+
+A layer's `quality` must be one of the evidence grades in
+[docs/METHOD.md](docs/METHOD.md); an unrecognized grade is a configuration
+error rather than a new label.
 
 ArcGIS layers and local GeoJSON snapshots work now. A manual layer can represent
 an observed quantity such as bicycle storage when no public polygon exists.
