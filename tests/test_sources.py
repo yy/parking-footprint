@@ -131,6 +131,17 @@ def test_arcgis_fetch_batches_ids_and_requests_the_configured_crs(arcgis) -> Non
     )
 
 
+def test_arcgis_features_follow_numeric_id_order(arcgis) -> None:
+    # A lexicographic sort would put "10" and "100" before "9", so the
+    # canonical bytes (and their hash) would disagree with every other
+    # numerically ordered ID list in the package.
+    source = sources._fetch_arcgis(make_spec(object_ids=("9", "10", "100"), where=None))
+
+    assert [
+        feature["properties"]["OBJECTID"] for feature in source.geojson["features"]
+    ] == [9, 10, 100]
+
+
 def test_online_provenance_records_when_the_data_was_fetched(arcgis) -> None:
     source = sources._fetch_arcgis(make_spec())
 

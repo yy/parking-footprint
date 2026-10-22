@@ -12,7 +12,7 @@ from pyproj import CRS
 
 from .config import LayerSpec
 from .errors import SourceError
-from .ids import sorted_ids
+from .ids import id_sort_key, sorted_ids
 
 __all__ = [
     "ARCGIS_OBJECT_ID_BATCH_SIZE",
@@ -200,8 +200,8 @@ def _fetch_arcgis(spec: LayerSpec) -> SourceData:
                 }
                 for feature in features
             ),
-            key=lambda feature: str(
-                (feature.get("properties") or {}).get(spec.id_field, "")
+            key=lambda feature: id_sort_key(
+                str((feature.get("properties") or {}).get(spec.id_field, ""))
             ),
         ),
     }
