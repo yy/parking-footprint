@@ -50,6 +50,9 @@ changes to the artifact schema are listed first in every release.
 
 ### Command line
 
+- New `candidates` command lists ArcGIS features within a radius of a point,
+  with per-feature area and lock status, and writes them as GeoJSON for map
+  review. It does not change any audit artifact.
 - Configuration, source, geometry, and output errors print as
   `error: <message>` on stderr with exit status 2. Verification failure keeps
   exit status 1. Tracebacks are now reserved for bugs.
