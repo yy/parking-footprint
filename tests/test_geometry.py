@@ -184,16 +184,17 @@ def test_geographic_analysis_crs_is_rejected() -> None:
 
 
 def test_area_conversion_follows_the_crs_unit() -> None:
-    # A 100-metre square is 10,000 m2; the same ring measured through a
-    # US-survey-foot CRS must agree to within rounding.
-    ring = [[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0], [0.0, 0.0]]
-    metric = measure(
-        collection(polygon_feature(ring)),
-        source_crs="EPSG:26918",
-        analysis_crs="EPSG:26918",
-    )
+    # A 100-metre square near Charlottesville is 10,000 m2; the same ring
+    # measured through a US-survey-foot CRS must agree up to the two
+    # projections' scale distortion (~0.04% here).
+    x, y = 720_000.0, 4_212_000.0
+    ring = [[x, y], [x + 100, y], [x + 100, y + 100], [x, y + 100], [x, y]]
+    data = collection(polygon_feature(ring))
+    metric = measure(data, source_crs="EPSG:26917", analysis_crs="EPSG:26917")
+    feet = measure(data, source_crs="EPSG:26917", analysis_crs="EPSG:2284")
 
     assert metric.union_area_sq_ft == pytest.approx(107639.10416709722)
+    assert feet.union_area_sq_ft == pytest.approx(metric.union_area_sq_ft, rel=1e-3)
 
 
 def test_union_area_of_no_geometries_is_zero() -> None:
