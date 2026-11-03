@@ -32,6 +32,12 @@ def test_offline_example_matches_baseline(tmp_path: Path) -> None:
     assert issues == []
     assert result["comparisons"]["car_to_building"]["ratio"] > 1
     assert result["comparisons"]["car_to_bike"]["ratio"] > 100
+    assert result["comparisons"]["car_to_bike"]["denominator_quality"] == [
+        "illustrative-assumption"
+    ]
+    assert result["comparisons"]["car_to_building"]["numerator_quality"] == [
+        "authoritative-local"
+    ]
     assert (tmp_path / "audit.json").exists()
     assert (tmp_path / "provenance.json").exists()
 

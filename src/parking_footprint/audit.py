@@ -191,6 +191,10 @@ def run_audit(
             "manual_area_sq_ft": _rounded(role_manual_sq_ft[role]),
         }
 
+    role_quality: dict[str, set[str]] = defaultdict(set)
+    for spec in config.layers:
+        role_quality[spec.role].add(spec.quality)
+
     comparisons = {}
     for comparison in config.comparisons:
         numerator = roles[comparison.numerator]["area_sq_ft"]
@@ -199,6 +203,8 @@ def run_audit(
             "numerator": comparison.numerator,
             "denominator": comparison.denominator,
             "ratio": _rounded(numerator / denominator) if denominator else None,
+            "numerator_quality": sorted(role_quality[comparison.numerator]),
+            "denominator_quality": sorted(role_quality[comparison.denominator]),
         }
 
     result = {
