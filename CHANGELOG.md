@@ -19,6 +19,11 @@ changes to the artifact schema are listed first in every release.
   `feature_request_parameters`, and `selection_request_url` describe the
   requests that were actually made.
 
+- Each `audit.json` comparison gained `numerator_quality` and
+  `denominator_quality`: the evidence grades of the layers behind each side, so
+  a ratio built on an `illustrative-assumption` keeps that label. `verify`
+  doesn't compare them; existing baselines still pass.
+
 ### Configuration
 
 - New optional layer field `captured_at`, accepting a TOML date, a TOML
