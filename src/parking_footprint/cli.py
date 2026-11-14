@@ -12,6 +12,7 @@ from .audit import (
     run_audit,
     verify_against_baseline,
 )
+from .candidates import find_candidates
 from .errors import AuditError, ParkingFootprintError
 
 # Reported as "error: ..." with exit status 2. Anything else is a bug and keeps
@@ -79,7 +80,43 @@ def build_parser() -> argparse.ArgumentParser:
         type=_nonnegative_finite_float,
         default=0.1,
     )
+
+    candidates_parser = subparsers.add_parser(
+        "candidates",
+        help="list ArcGIS features near a point for review before locking",
+    )
+    candidates_parser.add_argument("config", type=Path)
+    candidates_parser.add_argument("--lat", type=float, required=True)
+    candidates_parser.add_argument("--lon", type=float, required=True)
+    candidates_parser.add_argument(
+        "--radius-ft",
+        type=_nonnegative_finite_float,
+        default=300.0,
+    )
+    candidates_parser.add_argument("--output", type=Path)
     return parser
+
+
+def _candidates(args: argparse.Namespace) -> None:
+    candidates = find_candidates(
+        args.config,
+        longitude=args.lon,
+        latitude=args.lat,
+        radius_ft=args.radius_ft,
+        output_dir=args.output,
+    )
+    layer_ids = list(dict.fromkeys(candidate.layer_id for candidate in candidates))
+    for layer_id in layer_ids:
+        layer = [c for c in candidates if c.layer_id == layer_id]
+        print(f"{layer_id}: {len(layer)} within {args.radius_ft:g} ft")
+        for candidate in layer:
+            mark = "  locked" if candidate.locked else ""
+            print(
+                f"  {candidate.feature_id:>10}  "
+                f"{candidate.area_sq_ft:>12,.2f} sq ft{mark}"
+            )
+    if not candidates:
+        print(f"no ArcGIS features within {args.radius_ft:g} ft")
 
 
 def _run(args: argparse.Namespace) -> None:
@@ -128,6 +165,8 @@ def main() -> None:
     try:
         if args.command == "run":
             _run(args)
+        elif args.command == "candidates":
+            _candidates(args)
         else:
             _verify(args)
     except EXPECTED_ERRORS as error:

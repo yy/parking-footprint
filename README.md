@@ -39,7 +39,17 @@ changes, or its measured area moves outside the configured tolerance.
 ## Verification workflow
 
 1. Define the audit boundary and inclusion rule in plain language.
-2. Inspect candidate features on an aerial image or GIS map.
+2. Inspect candidate features on an aerial image or GIS map. `candidates`
+   lists every feature in the config's ArcGIS layers within a radius of a
+   point, with its area and whether it is already locked, and writes one
+   GeoJSON file per layer for review in QGIS or geojson.io:
+
+   ```sh
+   uv run parking-footprint candidates audit.toml \
+     --lat 38.0487 --lon -78.4787 --radius-ft 300 --output candidates
+   ```
+
+   The search radius is a discovery aid, not an inclusion rule.
 3. Save the accepted feature IDs in `audit.toml`.
 4. Run the audit. The package records the query URL, IDs, data hash, CRS, areas,
    software version, and source snapshots.
